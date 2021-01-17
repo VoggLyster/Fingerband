@@ -1,7 +1,7 @@
 #include <EEPROM.h>
 #include "MPU9250.h"
 
-const uint8_t EEPROM_SIZE = 1 + sizeof(float) * 3 * 4;
+const uint8_t EEPROM_SIZE = 1 + sizeof(float) * 3 * 5;
 extern MPU9250 mpu;
 
 enum EEP_ADDR {
@@ -9,7 +9,8 @@ enum EEP_ADDR {
     EEP_ACC_BIAS = 0x01,
     EEP_GYRO_BIAS = 0x0D,
     EEP_MAG_BIAS = 0x19,
-    EEP_MAG_SCALE = 0x25
+    EEP_MAG_SCALE = 0x25,
+    EEP_OFFSET = 0x31
 };
 
 void writeByte(int address, byte value) {
@@ -40,7 +41,7 @@ bool isCalibrated() {
     return (readByte(EEP_CALIB_FLAG) == 0x01);
 }
 
-void saveCalibration() {
+void saveCalibration(float* offsets) {
     Serial.println("Write calibrated parameters to EEPROM");
     writeByte(EEP_CALIB_FLAG, 1);
     writeFloat(EEP_ACC_BIAS + 0, mpu.getAccBias(0));
@@ -55,12 +56,16 @@ void saveCalibration() {
     writeFloat(EEP_MAG_SCALE + 0, mpu.getMagScale(0));
     writeFloat(EEP_MAG_SCALE + 4, mpu.getMagScale(1));
     writeFloat(EEP_MAG_SCALE + 8, mpu.getMagScale(2));
+    writeFloat(EEP_OFFSET + 0, offsets[0]);
+    writeFloat(EEP_OFFSET + 4, offsets[1]);
+    writeFloat(EEP_OFFSET + 8, offsets[2]);
 #if defined(ESP_PLATFORM) || defined(ESP8266)
     EEPROM.commit();
 #endif
+    Serial.println("Calibration saved successfully");
 }
 
-void loadCalibration() {
+void loadCalibration(float* offsets) {
     Serial.println("Load calibrated parameters from EEPROM");
     if (isCalibrated()) {
         Serial.println("calibrated? : YES");
@@ -81,6 +86,10 @@ void loadCalibration() {
             readFloat(EEP_MAG_SCALE + 0),
             readFloat(EEP_MAG_SCALE + 4),
             readFloat(EEP_MAG_SCALE + 8));
+        float xOffset = readFloat(EEP_OFFSET + 0);
+        offsets[0] = readFloat(EEP_OFFSET + 0);
+        offsets[1] = readFloat(EEP_OFFSET + 4);
+        offsets[2] = readFloat(EEP_OFFSET + 8);
     } else {
         Serial.println("calibrated? : NO");
         Serial.println("load default values");
@@ -88,6 +97,9 @@ void loadCalibration() {
         mpu.setGyroBias(0., 0., 0.);
         mpu.setMagBias(0., 0., 0.);
         mpu.setMagScale(1., 1., 1.);
+        offsets[0] = 0.;
+        offsets[1] = 0.;
+        offsets[2] = 0.;
     }
 }
 
@@ -119,21 +131,15 @@ void printCalibration() {
     Serial.println(readFloat(EEP_MAG_SCALE + 4));
     Serial.print("mag scale z : ");
     Serial.println(readFloat(EEP_MAG_SCALE + 8));
+    Serial.print("X-axis offset : ");
+    Serial.println(readFloat(EEP_OFFSET + 0));
+    Serial.print("Y-axis offset : ");
+    Serial.println(readFloat(EEP_OFFSET + 4));
+    Serial.print("Z-axis offset : ");
+    Serial.println(readFloat(EEP_OFFSET + 8));
 }
 
 void printBytes() {
     for (size_t i = 0; i < EEPROM_SIZE; ++i)
         Serial.println(readByte(i), HEX);
-}
-
-void setupEEPROM() {
-    Serial.println("EEPROM start");
-
-    if (!isCalibrated()) {
-        Serial.println("Need Calibration!!");
-    }
-    Serial.println("EEPROM calibration value is : ");
-    printCalibration();
-    Serial.println("Loaded calibration value is : ");
-    loadCalibration();
 }

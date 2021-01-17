@@ -7,7 +7,7 @@
 MPU9250 mpu;
 static uint32_t prev_sample_ms;
 
-char ssid[] = "WiFimodem-F66B";
+char ssid[] = "WiFimodem-F66B"; // I don't care. You don't know where I am!
 char pass[] = "2hc5hb1ee1";
 
 WiFiUDP Udp;
@@ -17,15 +17,8 @@ const unsigned int localPort = 8888;
 OSCErrorCode error;
 
 int meanCounter = 0;
-
-float xAxisOffset = 0;
-float yAxisOffset = 0;
-float zAxisOffset = 0;
-
+float offsets[3] = {0,0,0};
 float prevVal = 0;
-unsigned int timer = 0;
-unsigned int period;
-int frequency;
 
 void setup() {
   Serial.begin(115200);
@@ -33,18 +26,6 @@ void setup() {
   Serial.println("Hello!");
   pinMode(D4, OUTPUT);
   digitalWrite(D4, LOW);
-  if (!mpu.setup(0x68)) {
-    while (1) {
-      Serial.println("MPU connection failed. ");
-      delay(5000);
-    }
-  }
-  EEPROM.begin(0x80);
-  delay(5000);
-  digitalWrite(D4, HIGH);
-  setupEEPROM();
-
-  prev_sample_ms = millis();
 
   digitalWrite(D4, LOW);
   Serial.print("Connecting to WiFi");
@@ -61,13 +42,58 @@ void setup() {
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   Udp.begin(localPort);
+  sendOSCMessage("Booting...");
+  if (!mpu.setup(0x68)) {
+    while (1) {
+      sendOSCMessage("MPU connection failed! Restarting ...");
+      delay(5000);
+      ESP.reset(); // Let's just reset and see if it fixes the issue
+    }
+  }
+  EEPROM.begin(0x80);
+  delay(5000);
+  digitalWrite(D4, HIGH);
+  Serial.println("EEPROM start");
+  if (!isCalibrated()) {
+      Serial.println("Need Calibration!!");
+  }
+  Serial.println("EEPROM calibration value is : ");
+  printCalibration();
+  Serial.println("Loaded calibration value is : ");
+  loadCalibration(&offsets[0]);
+  prev_sample_ms = millis();
+  sendOSCMessage("Ready to play");
+  flashLED(300, 50);
 }
 
 void loop() {
   if (mpu.update()) {
     if (millis() > prev_sample_ms + 10) {
       OSCMessage msg("/xyz");
-      msg.add(mpu.getEulerX() - xAxisOffset).add(mpu.getEulerY()).add(mpu.getEulerZ() - zAxisOffset);
+      
+      // Handle xAxis values ----------------------
+      float xAxis = mpu.getEulerX();
+      if (xAxis > 0)
+      {
+        prevVal = xAxis;
+        xAxis = 0;
+      }
+      else if (xAxis < 0)
+      {
+        if (prevVal > 0) 
+        {
+          offsets[0] = prevVal;
+        }
+        prevVal = xAxis;
+        Serial.println(xAxis);
+        Serial.println(offsets[0]);
+        xAxis += offsets[0];
+        Serial.println(xAxis);
+        Serial.println("-------------");
+      }
+      // ------------------------------------------
+      
+      msg.add(xAxis).add(mpu.getEulerY()).add(mpu.getEulerZ() - offsets[2]);
       Udp.beginPacket(outIp, outPort);
       msg.send(Udp);
       Udp.endPacket();
@@ -83,6 +109,7 @@ void loop() {
     }
     if (!msg.hasError()) {
       msg.dispatch("/calibrate", calibrate);
+      Serial.println("Calibration invoked");
     } else {
       error = msg.getError();
       Serial.print("Error: ");
@@ -91,23 +118,22 @@ void loop() {
   }
 }
 
-//float GetYAxisSignal()
-//{
-//  float newData = mpu.getEulerY();
-//  float res = 0;
-//  float sensitivity = 0.5;
-//  if (newData > prevVal + sensitivity)
-//    res = 1;
-//  else if (newData < prevVal - sensitivity)
-//    res = -1;
-//  prevVal = newData;
-//  return res;
-//}
+void sendOSCMessage(char *message) 
+{
+  Serial.println(message);
+  OSCMessage msg("/msg");
+  msg.add(message);
+  Udp.beginPacket(outIp, outPort);
+  msg.send(Udp);
+  Udp.endPacket();
+  msg.empty();
+}
 
 void calibrate(OSCMessage &msg) {
+  // Something in calibration causes a memory exception - but it saves the offsets and reads them on reboot
+  sendOSCMessage("Calibrating...");
   flashLED(1000, 200);
   mpu.calibrateAccelGyro();
-  saveCalibration();
   flashLED(1000, 200);
   uint32_t startTime = millis();
   float xSum = 0;
@@ -122,18 +148,25 @@ void calibrate(OSCMessage &msg) {
       meanCounter++;
     }
   }
-  xAxisOffset = xSum / meanCounter;
-  yAxisOffset = ySum / meanCounter;
-  zAxisOffset = zSum / meanCounter;
+//  offsets[0] = xSum / meanCounter;
+  offsets[1] = ySum / meanCounter;
+  offsets[2] = zSum / meanCounter;
   Serial.print("Mean counter: ");
   Serial.println(meanCounter);
-  Serial.print("X offset = ");
-  Serial.println(xAxisOffset);
-  Serial.print("Y offset = ");
-  Serial.println(yAxisOffset);
-  Serial.print("Z offset = ");
-  Serial.println(zAxisOffset);
-  flashLED(1000, 200);
+  saveCalibration(&offsets[0]);
+  printCalibration(); 
+  flashLED(500, 100);
+  String outMsg = "Calibration done. XYZ offsets are: ";
+  outMsg += offsets[0];
+  outMsg += ", ";
+  outMsg += offsets[1];
+  outMsg += ", ";
+  outMsg += offsets[2];
+  int len = outMsg.length();
+  char charray[len];
+  outMsg.toCharArray(charray, len);
+  sendOSCMessage(charray);
+  meanCounter = 0;
 }
 
 void flashLED(int time_ms, int speed_ms)
