@@ -67,7 +67,7 @@ void loop() {
   if (mpu.update()) {
     if (millis() > prev_sample_ms + 10) {
       OSCMessage msg("/xyz");
-      msg.add(mpu.getEulerX() - xAxisOffset).add(GetYAxisSignal()).add(mpu.getEulerZ() - zAxisOffset);
+      msg.add(mpu.getEulerX() - xAxisOffset).add(mpu.getEulerY()).add(mpu.getEulerZ() - zAxisOffset);
       Udp.beginPacket(outIp, outPort);
       msg.send(Udp);
       Udp.endPacket();
@@ -91,18 +91,18 @@ void loop() {
   }
 }
 
-float GetYAxisSignal()
-{
-  float newData = mpu.getEulerY();
-  float res = 0;
-  float sensitivity = 0.5;
-  if (newData > prevVal + sensitivity)
-    res = 1;
-  else if (newData < prevVal - sensitivity)
-    res = -1;
-  prevVal = newData;
-  return res;
-}
+//float GetYAxisSignal()
+//{
+//  float newData = mpu.getEulerY();
+//  float res = 0;
+//  float sensitivity = 0.5;
+//  if (newData > prevVal + sensitivity)
+//    res = 1;
+//  else if (newData < prevVal - sensitivity)
+//    res = -1;
+//  prevVal = newData;
+//  return res;
+//}
 
 void calibrate(OSCMessage &msg) {
   flashLED(1000, 200);
