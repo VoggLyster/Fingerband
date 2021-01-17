@@ -11,7 +11,7 @@ char ssid[] = "WiFimodem-F66B";
 char pass[] = "2hc5hb1ee1";
 
 WiFiUDP Udp;
-const IPAddress outIp(192,168,1,11);
+const IPAddress outIp(192, 168, 1, 11);
 const unsigned int outPort = 9999;
 const unsigned int localPort = 8888;
 OSCErrorCode error;
@@ -22,6 +22,11 @@ float xAxisOffset = 0;
 float yAxisOffset = 0;
 float zAxisOffset = 0;
 
+float prevVal = 0;
+unsigned int timer = 0;
+unsigned int period;
+int frequency;
+
 void setup() {
   Serial.begin(115200);
   Wire.begin();
@@ -29,10 +34,10 @@ void setup() {
   pinMode(D4, OUTPUT);
   digitalWrite(D4, LOW);
   if (!mpu.setup(0x68)) {
-      while (1) {
-          Serial.println("MPU connection failed. ");
-          delay(5000);
-      }
+    while (1) {
+      Serial.println("MPU connection failed. ");
+      delay(5000);
+    }
   }
   EEPROM.begin(0x80);
   delay(5000);
@@ -43,7 +48,7 @@ void setup() {
 
   digitalWrite(D4, LOW);
   Serial.print("Connecting to WiFi");
-  WiFi.begin(ssid,pass);
+  WiFi.begin(ssid, pass);
   while (WiFi.status() != WL_CONNECTED) {
     delay(400);
     Serial.print(".");
@@ -60,9 +65,9 @@ void setup() {
 
 void loop() {
   if (mpu.update()) {
-    if (millis() > prev_sample_ms + 100) {
+    if (millis() > prev_sample_ms + 10) {
       OSCMessage msg("/xyz");
-      msg.add(mpu.getEulerX() - xAxisOffset).add(mpu.getEulerY() - yAxisOffset).add(mpu.getEulerZ() - zAxisOffset);
+      msg.add(mpu.getEulerX() - xAxisOffset).add(GetYAxisSignal()).add(mpu.getEulerZ() - zAxisOffset);
       Udp.beginPacket(outIp, outPort);
       msg.send(Udp);
       Udp.endPacket();
@@ -86,31 +91,24 @@ void loop() {
   }
 }
 
+float GetYAxisSignal()
+{
+  float newData = mpu.getEulerY();
+  float res = 0;
+  float sensitivity = 0.5;
+  if (newData > prevVal + sensitivity)
+    res = 1;
+  else if (newData < prevVal - sensitivity)
+    res = -1;
+  prevVal = newData;
+  return res;
+}
+
 void calibrate(OSCMessage &msg) {
-  digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
-  delay(200);
-  digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
-  delay(200);
-  digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
+  flashLED(1000, 200);
   mpu.calibrateAccelGyro();
   saveCalibration();
-  digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
-  delay(200);
-  digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
-  delay(200);
-  digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
+  flashLED(1000, 200);
   uint32_t startTime = millis();
   float xSum = 0;
   float ySum = 0;
@@ -132,18 +130,20 @@ void calibrate(OSCMessage &msg) {
   Serial.print("X offset = ");
   Serial.println(xAxisOffset);
   Serial.print("Y offset = ");
-  Serial.println(yAxisOffset);  
+  Serial.println(yAxisOffset);
   Serial.print("Z offset = ");
   Serial.println(zAxisOffset);
+  flashLED(1000, 200);
+}
+
+void flashLED(int time_ms, int speed_ms)
+{
+  unsigned int ledState = HIGH;
+  for (int i = 0; i < time_ms / speed_ms; i++)
+  {
+    digitalWrite(D4, ledState);
+    ledState = !ledState;
+    delay(speed_ms);
+  }
   digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
-  delay(200);
-  digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
-  delay(200);
-  digitalWrite(D4, LOW);
-  delay(200);
-  digitalWrite(D4, HIGH);
 }
