@@ -130,7 +130,6 @@ void sendOSCMessage(char *message)
 }
 
 void calibrate(OSCMessage &msg) {
-  // Something in calibration causes a memory exception - but it saves the offsets and reads them on reboot
   sendOSCMessage("Calibrating...");
   flashLED(1000, 200);
   mpu.calibrateAccelGyro();
