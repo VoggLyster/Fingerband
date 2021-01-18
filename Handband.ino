@@ -147,7 +147,6 @@ void calibrate(OSCMessage &msg) {
       meanCounter++;
     }
   }
-//  offsets[0] = xSum / meanCounter;
   offsets[1] = ySum / meanCounter;
   offsets[2] = zSum / meanCounter;
   Serial.print("Mean counter: ");
